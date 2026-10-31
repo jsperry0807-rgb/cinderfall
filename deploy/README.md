@@ -1,12 +1,11 @@
 # Deploying Cinderfall on a Hostinger VPS (Docker)
 
-Three long-running containers plus a one-shot initializer:
+Three containers:
 
 - **mongo** — MongoDB 8, internal network only, persistent volume.
-- **mongo-init** — runs once after Mongo is healthy, creates the unprivileged
-  application user, then exits 0.
-- **app** — one image serving the API and the built SPA, connects as that
-  application user.
+- **app** — one image serving the API and the built SPA. Its entrypoint creates
+  (or updates) the unprivileged database user as root, unsets the root
+  credentials, then starts the API as the app user.
 - **caddy** — automatic TLS/HTTP3, proxies everything to the app.
 
 No Atlas account is required.
@@ -39,7 +38,7 @@ domain), plus `RESEND_API_KEY` and `MAIL_FROM`. The app's `MONGODB_URI` is
 built by Compose from `MONGO_APP_USER` / `MONGO_APP_PASSWORD`; you do not paste
 it by hand.
 
-Use **hex** passwords for Mongo: they are safe in a URI and in the init script.
+Use **hex** passwords for Mongo: they are safe in a URI and in provisioning.
 
 ## 2. Run
 
@@ -49,19 +48,19 @@ docker compose logs -f mongo
 docker compose logs -f app
 ```
 
-On the first boot the order is: mongo healthy → `mongo-init` creates the
-`cinderfall` app user with `readWrite` and exits → app starts → Caddy starts.
-The app waits for `mongo-init` to complete successfully, and Caddy waits for the
-app's healthcheck.
+On the first boot the order is: mongo healthy → app entrypoint creates the
+`cinderfall` app user with `readWrite` → API starts → Caddy starts. The app waits
+for Mongo's healthcheck, and Caddy waits for the app's healthcheck.
 
-If the app never starts, check the initializer:
+Provisioning appears in the app log:
 
 ```sh
-docker compose logs mongo-init
-docker compose ps        # mongo-init should show "exited (0)"
+docker compose logs -f app
+# [provision] created cinderfall on cinderfall
+# [provision] synchronized cinderfall   (on later starts)
 ```
 
-`mongo-init` is idempotent; it leaves an existing user untouched.
+It is idempotent and keeps the database user's password in sync with `.env`.
 
 Check:
 
@@ -118,31 +117,25 @@ Restore:
 
 ## Changing the app database password
 
-The app user is created only on an empty data volume. If you change
-`MONGO_APP_PASSWORD` later, update the user in MongoDB too, or the app will fail
-to connect:
+Change `MONGO_APP_PASSWORD` in `.env`, then restart the app:
 
 ```sh
-docker compose exec mongo mongosh --username root --authenticationDatabase admin
-# in mongosh:
-use cinderfall
-db.changeUserPassword("cinderfall", "NEW_HEX_PASSWORD")
+docker compose up -d app
 ```
 
-Use your `MONGO_ROOT_USER` if it is not `root`. Then update
-`MONGO_APP_PASSWORD` in `.env` and run `docker compose up -d app`.
+The entrypoint updates the database user to the new password before starting the
+API. The password must remain hex.
 
 ## Troubleshooting
 
 - **Mongo unhealthy**: `docker compose logs mongo`. The healthcheck uses the
   root credentials from `.env`; verify `MONGO_ROOT_PASSWORD` matches the one the
   volume was initialized with.
-- **`mongo-init` failed**: `docker compose logs mongo-init`. The app password
-  must be **hex** (`openssl rand -hex 24`); the script rejects anything else so
-  the URI cannot break.
+- **App provisioning failed**: `docker compose logs app`. The app password must
+  be **hex** (`openssl rand -hex 24`); provisioning rejects anything else so the
+  URI cannot break. Check that `MONGO_ROOT_PASSWORD` matches the volume.
 - **App can't connect**: `MONGO_APP_USER`/`MONGO_APP_PASSWORD` must match the
-  database user. If you changed the app password after the first boot, update
-  the user in Mongo (see above).
+  database user; the entrypoint synchronises it on every start.
 - **Caddy has no certificate**: DNS must point at the VPS and ports 80/443 must
   be reachable. `docker compose logs caddy`.
 - **Memory**: the Mongo cache is capped at 0.5 GB in `compose.yaml`; adjust to
@@ -154,8 +147,9 @@ Use your `MONGO_ROOT_USER` if it is not `root`. Then update
 
 - TLS/HTTP3 and certificate renewal: Caddy (`caddy_data` volume).
 - Mongo is not published; only Caddy is reachable from outside.
-- Root credentials are used only by the Mongo healthcheck, the one-shot
-  initializer and backups; the app connects as the `readWrite` user.
+- Root credentials are used by the Mongo healthcheck, the app entrypoint's
+  provisioning step and backups. The entrypoint unsets them before the API
+  process starts; the API runs as the `readWrite` user.
 - CSP, HSTS and security headers: Helmet in production.
 - `__Host-` + `Secure` + `SameSite=Lax` session cookies behind Caddy.
 - SPA + API on one origin, so cookies stay first-party.

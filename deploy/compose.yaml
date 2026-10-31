@@ -24,23 +24,6 @@ services:
       retries: 6
       start_period: 30s
 
-  mongo-init:
-    image: mongo:8
-    restart: "no"
-    depends_on:
-      mongo:
-        condition: service_healthy
-    environment:
-      MONGO_HOST: mongo
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-root}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD in .env}
-      MONGO_INITDB_DATABASE: cinderfall
-      MONGO_APP_USER: ${MONGO_APP_USER:-cinderfall}
-      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:?set MONGO_APP_PASSWORD in .env}
-    volumes:
-      - ./mongo-init.sh:/init/mongo-init.sh:ro
-    entrypoint: ["/bin/sh", "/init/mongo-init.sh"]
-
   app:
     build:
       context: ..
@@ -56,7 +39,11 @@ services:
       COOKIE_SECURE: "true"
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in .env}
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
-      # App user only; the root credentials stay out of this container.
+      # Used once by the entrypoint to create the app user, then unset.
+      MONGODB_ROOT_URI: mongodb://${MONGO_ROOT_USER:-root}:${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD in .env}@mongo:27017/admin?authSource=admin
+      MONGO_APP_USER: ${MONGO_APP_USER:-cinderfall}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:?set MONGO_APP_PASSWORD in .env}
+      MONGO_DB_NAME: cinderfall
       MONGODB_URI: mongodb://${MONGO_APP_USER:-cinderfall}:${MONGO_APP_PASSWORD}@mongo:27017/cinderfall?authSource=cinderfall
       MAILER: ${MAILER:-resend}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
@@ -66,8 +53,8 @@ services:
     expose:
       - "8787"
     depends_on:
-      mongo-init:
-        condition: service_completed_successfully
+      mongo:
+        condition: service_healthy
     healthcheck:
       test:
         [

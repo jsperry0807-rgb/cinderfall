@@ -57,7 +57,7 @@ M6 delivered (Hostinger/Docker path):
 - Hashed assets/fonts cached immutably, `index.html` no-cache, SPA fallback for
   client routes, JSON 404s under `/api`, `/healthz` + `/readyz`.
 - Self-hosted MongoDB 8 in Compose (default), internal network only, persistent
-  volumes, root/app user separation, a one-shot init service, healthcheck, and a
+  volumes, root/app user separation, entrypoint provisioning, healthcheck, and a
   `backup.sh` / `restore.sh` pair (7-day rotation). Atlas is an optional
   external alternative.
 - `deploy/deploy.sh`, `deploy/.env.example`, and `deploy/README.md` with DNS,

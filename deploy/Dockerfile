@@ -29,7 +29,8 @@ ENV NODE_ENV=production \
     WEB_DIST=/app/apps/web/dist
 
 COPY --from=build /app /app
-RUN chown -R node:node /app
+RUN chown -R node:node /app \
+    && chmod +x /app/apps/api/docker-entrypoint.sh
 USER node
 
 EXPOSE 8787
@@ -37,4 +38,4 @@ EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD node -e "fetch('http://127.0.0.1:8787/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["pnpm", "--filter", "@cinderfall/api", "start"]
+ENTRYPOINT ["/app/apps/api/docker-entrypoint.sh"]
