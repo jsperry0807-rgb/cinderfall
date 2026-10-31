@@ -1,0 +1,12 @@
+# Caddy terminates TLS and proxies everything to the app, which serves the SPA.
+{$DOMAIN} {
+    encode zstd gzip
+    reverse_proxy app:8787
+    header {
+        -Server
+    }
+    log {
+        output stdout
+        format console
+    }
+}
