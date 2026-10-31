@@ -1,14 +1,25 @@
 #!/bin/sh
-# Creates the least-privilege application user on first boot.
-# Passwords must be URL/shell-safe (use: openssl rand -hex 24).
+# One-shot: create the least-privilege application user after Mongo is healthy.
+# Passwords must be hex (openssl rand -hex 24).
 set -eu
 
 DB="${MONGO_INITDB_DATABASE:-cinderfall}"
 APP_USER="${MONGO_APP_USER:-cinderfall}"
 APP_PASS="${MONGO_APP_PASSWORD:?MONGO_APP_PASSWORD is required}"
+HOST="${MONGO_HOST:-127.0.0.1}"
 
-create_user() {
-    mongosh --quiet "$@" --eval "
+case "$APP_PASS" in
+    *[!0-9A-Fa-f]*)
+        echo "MONGO_APP_PASSWORD must be hex; run: openssl rand -hex 24" >&2
+        exit 1
+        ;;
+esac
+
+mongosh --quiet --host "$HOST" \
+    --username "${MONGO_INITDB_ROOT_USERNAME}" \
+    --password "${MONGO_INITDB_ROOT_PASSWORD}" \
+    --authenticationDatabase admin \
+    --eval "
         const target = db.getSiblingDB('${DB}');
         if (!target.getUser('${APP_USER}')) {
             target.createUser({
@@ -18,14 +29,3 @@ create_user() {
             });
         }
     "
-}
-
-# Depending on the image version, init scripts run with or without auth.
-if create_user \
-    --username "${MONGO_INITDB_ROOT_USERNAME}" \
-    --password "${MONGO_INITDB_ROOT_PASSWORD}" \
-    --authenticationDatabase admin 2>/dev/null; then
-    exit 0
-fi
-
-create_user

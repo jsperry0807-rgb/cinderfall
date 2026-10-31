@@ -5,27 +5,41 @@ services:
     image: mongo:8
     restart: unless-stopped
     # Keep the cache predictable on a small VPS; adjust to ~25% of RAM.
-    command: ["--wiredTigerCacheSizeGB", "0.5"]
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.5"]
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-root}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD in .env}
       MONGO_INITDB_DATABASE: cinderfall
-      MONGO_APP_USER: ${MONGO_APP_USER:-cinderfall}
-      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:?set MONGO_APP_PASSWORD in .env}
     volumes:
-      - ./mongo-init.sh:/docker-entrypoint-initdb.d/01-app-user.sh:ro
       - mongo_data:/data/db
       - mongo_config:/data/configdb
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "mongosh --quiet --username \"$$MONGO_APP_USER\" --password \"$$MONGO_APP_PASSWORD\" --authenticationDatabase cinderfall --eval 'quit(db.adminCommand({ping:1}).ok ? 0 : 1)'",
+          "mongosh --quiet --username \"$$MONGO_INITDB_ROOT_USERNAME\" --password \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'quit(db.adminCommand({ping:1}).ok ? 0 : 1)'",
         ]
       interval: 10s
       timeout: 5s
       retries: 6
       start_period: 30s
+
+  mongo-init:
+    image: mongo:8
+    restart: "no"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_HOST: mongo
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD in .env}
+      MONGO_INITDB_DATABASE: cinderfall
+      MONGO_APP_USER: ${MONGO_APP_USER:-cinderfall}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:?set MONGO_APP_PASSWORD in .env}
+    volumes:
+      - ./mongo-init.sh:/init/mongo-init.sh:ro
+    entrypoint: ["/bin/sh", "/init/mongo-init.sh"]
 
   app:
     build:
@@ -52,8 +66,8 @@ services:
     expose:
       - "8787"
     depends_on:
-      mongo:
-        condition: service_healthy
+      mongo-init:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
