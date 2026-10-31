@@ -20,6 +20,8 @@ export interface AwaySummary {
     stages: number;
     gold: number;
     shards: number;
+    /** Deaths the offline simulation recovered from automatically. */
+    deaths?: number;
     died: boolean;
 }
 

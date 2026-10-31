@@ -54,9 +54,12 @@ long absence: that is the server simulating the away period.
 ## Notes
 
 - The simulation is deterministic given an `Rng`: `mulberry32(seed)`.
-- `advance(state, seconds, rng)` is the offline path; it picks a coarse step for
-  long gaps.
+- `advance(state, seconds, rng, { autoRebirth })` is the offline path; it picks
+  a coarse step for long gaps. With `autoRebirth` it keeps simulating through
+  deaths so one bad run cannot waste an entire absence.
 - Events are data; presentation lives in the apps.
+- Dying no longer stalls the idle loop: the death screen auto-rebirths after a
+  few seconds (the button still skips the wait).
 
 ## Web (M2)
 

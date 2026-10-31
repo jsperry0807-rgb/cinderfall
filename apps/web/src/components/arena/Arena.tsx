@@ -53,7 +53,7 @@ export function Arena() {
             if (!(index >= 1 && index <= 9)) return;
 
             const snap = useGameStore.getState().snap;
-            if (!snap) return;
+            if (!snap || snap.dead) return;
             const unlocked = SKILL_ORDER.filter((id) => snap.ranks[id]);
             const skill = unlocked[index - 1];
             if (skill) {

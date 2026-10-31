@@ -53,7 +53,10 @@ export function OfflineModal() {
 
                 {away.died && (
                     <p className="dn">
-                        You fell while away. Your shards are waiting.
+                        {(away.deaths ?? 1) > 1
+                            ? `You fell ${away.deaths} times and rose again each time.`
+                            : "You fell while away and rose again."}{" "}
+                        Your shards were collected.
                     </p>
                 )}
                 {away.skipped > 60 && (

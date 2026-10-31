@@ -90,7 +90,7 @@ export function kill(state: SimState, rng: Rng): SimEvent[] {
 
     state.gold += gold;
 
-    const events: SimEvent[] = [{ t: "kill", name, gold, xp }];
+    const events: SimEvent[] = [{ t: "kill", name, gold, xp, boss }];
     events.push(...gainXp(state, xp));
 
     if (boss && s % 10 === 0 && s > 0) {
@@ -113,11 +113,18 @@ export function kill(state: SimState, rng: Rng): SimEvent[] {
     } else {
         state.k++;
     }
+    // Track the peak during the run, not only on rebirth: the UI shows `best`
+    // while the player is still alive.
+    state.best = Math.max(state.best || 1, state.stage);
     events.push(...spawn(state, rng));
     return events;
 }
 
 export function hit(state: SimState, rng: Rng, mult = 1): SimEvent[] {
+    // A dead player cannot keep fighting; this is also reachable from the
+    // keyboard skill shortcuts, which are not blocked by the death overlay.
+    if (state.dead) return [];
+
     const stats = calc(state);
     const strikes =
         mult === 1 && rng() * 100 < (stats.multihit || 0) ? 2 : 1;
@@ -166,7 +173,7 @@ export function cast(
     id: SkillId,
     rng: Rng,
 ): SimEvent[] {
-    if (!state.ranks[id] || state.cd[id] > 0) return [];
+    if (state.dead || !state.ranks[id] || state.cd[id] > 0) return [];
 
     state.cd[id] = SK[id].cd;
     const events: SimEvent[] = [{ t: "skill", id }];
@@ -194,6 +201,10 @@ export function die(state: SimState): SimEvent[] {
 }
 
 export function rebirth(state: SimState, rng: Rng): SimEvent[] {
+    // Only a dead character can rise. This also makes the automatic timer and
+    // a manual click on the death screen race-safe.
+    if (!state.dead) return [];
+
     const stats = calc(state);
     const earned = state.pend || 0;
     const keepGold = Math.floor((state.gold * (stats.keepGold || 0)) / 100);
@@ -262,6 +273,9 @@ export function tick(state: SimState, dt: number, rng: Rng): SimEvent[] {
             events.push({ t: "thorns", dmg: r });
             if (state.enemy.hp <= 0) {
                 events.push(...kill(state, rng));
+                // Thorns can kill the foe on the same hit that dropped us to
+                // zero. `kill` may heal us through a level-up, so re-check.
+                if (state.hp <= 0) events.push(...die(state));
                 return events;
             }
         }
@@ -288,6 +302,17 @@ export function tick(state: SimState, dt: number, rng: Rng): SimEvent[] {
     return events;
 }
 
+export interface AdvanceOptions {
+    /** Simulated granularity; coarser steps are cheaper but less exact. */
+    step?: number;
+    maxSteps?: number;
+    /**
+     * Rebirth immediately after every death instead of stopping. An absence
+     * that kills the character must not waste the rest of the offline window.
+     */
+    autoRebirth?: boolean;
+}
+
 /**
  * Step the simulation forward. Used for server-side offline progress.
  * `step` is the simulated granularity; coarser steps are cheaper but less exact.
@@ -296,13 +321,18 @@ export function advance(
     state: SimState,
     seconds: number,
     rng: Rng,
-    opts: { step?: number; maxSteps?: number } = {},
+    opts: AdvanceOptions = {},
 ): SimEvent[] {
     if (!Number.isFinite(seconds) || seconds <= 0) return [];
 
     const step = Math.max(1e-3, opts.step ?? offlineStep(seconds));
     const maxSteps = Math.max(1, opts.maxSteps ?? 100_000);
+    const autoRebirth = opts.autoRebirth === true;
     const events: SimEvent[] = [];
+
+    // A save can arrive already dead (the tab closed on the death screen).
+    // Resuming the idle loop means rising before the first simulated tick.
+    if (state.dead && autoRebirth) events.push(...rebirth(state, rng));
 
     let remaining = seconds;
     let steps = 0;
@@ -312,7 +342,10 @@ export function advance(
         events.push(...tick(state, dt, rng));
         remaining -= dt;
         steps++;
-        if (state.dead) break;
+        if (state.dead) {
+            if (!autoRebirth) break;
+            events.push(...rebirth(state, rng));
+        }
     }
     return events;
 }

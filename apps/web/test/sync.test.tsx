@@ -83,12 +83,13 @@ describe("offline summary", () => {
                 stages: 0,
                 gold: 3,
                 shards: 0,
+                deaths: 3,
                 died: true,
             },
         });
 
         render(<OfflineModal />);
-        expect(screen.getByText(/fell while away/i)).toBeTruthy();
+        expect(screen.getByText(/fell 3 times/i)).toBeTruthy();
     });
 });
 

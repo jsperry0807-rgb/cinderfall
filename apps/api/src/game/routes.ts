@@ -30,6 +30,8 @@ export interface AwaySummary {
     stages: number;
     gold: number;
     shards: number;
+    /** Deaths the offline simulation auto-recovered from. */
+    deaths: number;
     died: boolean;
 }
 
@@ -79,21 +81,45 @@ function summarize(
 ): AwaySummary {
     let kills = 0;
     let drops = 0;
+    let levels = 0;
+    let stages = 0;
+    let deaths = 0;
+    let gold = 0;
+
     for (const event of events) {
-        if (event.t === "kill") kills++;
-        else if (event.t === "drop") drops++;
+        switch (event.t) {
+            case "kill":
+                kills++;
+                if (event.boss) stages++;
+                gold += event.gold;
+                break;
+            case "drop":
+                drops++;
+                if (event.sold) gold += event.gold;
+                break;
+            case "levelup":
+                levels++;
+                break;
+            case "death":
+                deaths++;
+                break;
+        }
     }
 
+    // Levels, stages and gold reset on rebirth, so count events/earnings
+    // instead of diffing the final state. Shards are permanent, so the diff
+    // is still exact.
     return {
         seconds: Math.round(simulated),
         skipped: Math.round(Math.max(0, skipped)),
         kills,
         drops,
-        levels: Math.max(0, after.lvl - pre.lvl),
-        stages: Math.max(0, after.stage - pre.stage),
-        gold: Math.max(0, after.gold - pre.gold),
+        levels,
+        stages,
+        gold: Math.round(Math.max(0, gold)),
         shards: Math.max(0, after.shards - pre.shards),
-        died: !pre.dead && after.dead,
+        deaths,
+        died: pre.dead || deaths > 0,
     };
 }
 
@@ -128,9 +154,12 @@ async function catchUp(
     const rng = mulberry32(
         hashSeed(save._id, save.lastSimAt.getTime(), save.simClock),
     );
+    // Keep the idle loop alive: a death early in a long absence must not
+    // discard the remaining offline window.
     const events = advance(state, simulated, rng, {
         step: offlineStep(simulated),
         maxSteps: 100_000,
+        autoRebirth: true,
     });
     const away = summarize(pre, state, events, simulated, elapsed - simulated);
 

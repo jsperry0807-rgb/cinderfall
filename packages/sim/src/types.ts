@@ -226,7 +226,7 @@ export type SimEvent =
     | { t: "hit"; dmg: number; crit: number; multihit: boolean }
     | { t: "playerHit"; dmg: number }
     | { t: "thorns"; dmg: number }
-    | { t: "kill"; name: string; gold: number; xp: number }
+    | { t: "kill"; name: string; gold: number; xp: number; boss: boolean }
     | { t: "drop"; item: Item; sold: boolean; gold: number }
     | { t: "levelup"; level: number }
     | { t: "death"; shards: number }

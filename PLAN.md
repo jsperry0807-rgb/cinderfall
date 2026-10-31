@@ -175,8 +175,9 @@ Deliberate behaviour changes:
   now fixed.
 - The enemy attack timer carries its remainder (`t -= spd`) so coarse offline
   steps do not silently reduce enemy DPS. At 0.1 s steps this is imperceptible.
-- `die()` clamps HP to 0, and `dead` is persisted so an absence cannot advance a
-  dead character.
+- `die()` clamps HP to 0, and `dead` is persisted. Offline catch-up passes
+  `autoRebirth` so an absence resumes after each death instead of stopping on
+  the first one.
 
 Not in M0: `apply(state, action)` (purchases/equip/sell), save validation with
 Zod, and wiring the original build to the package. The legacy build is retired.
@@ -308,8 +309,10 @@ Offline catch-up runs `advance` at a coarse step:
 | ≤ 2 h | 0.5 s | 14,400 |
 | > 2 h (cap 8 h) | 1 s | 28,800 |
 
-Death stops the catch-up early and is reported in the summary. The result is
-cached immediately (`lastSimAt = now`) so the cost is paid once per absence.
+Catch-up simulates through deaths with `autoRebirth`: each death is recovered
+and the remaining absence still counts. The summary reports the death count and
+the progress made across runs. The result is cached immediately
+(`lastSimAt = now`) so the cost is paid once per absence.
 
 **Exit criteria:** a deterministic 24 h replay test passes invariants
 (`0 ≤ hp ≤ maxHp`, gold/xp/shards finite and non-negative, stage monotonic,

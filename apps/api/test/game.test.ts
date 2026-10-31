@@ -326,7 +326,7 @@ describe("offline catch-up", () => {
         await app.close();
     });
 
-    it("stops at death and reports it", async () => {
+    it("auto-rebirths after a death and keeps simulating", async () => {
         const { app, env, db } = await makeApp();
         const g = await guest(app, env);
 
@@ -355,7 +355,43 @@ describe("offline catch-up", () => {
 
         const body = (await getState(app, env, g.cookie)).json();
         expect(body.away.died).toBe(true);
-        expect(body.state.dead).toBe(true);
+        expect(body.away.deaths).toBeGreaterThanOrEqual(1);
+        // The death no longer freezes the rest of the absence.
+        expect(body.state.dead).toBe(false);
+        expect(body.away.kills).toBeGreaterThan(0);
+        expect(body.away.stages).toBeGreaterThan(0);
+        expect(body.state.stage).toBeGreaterThan(1);
+
+        await app.close();
+    }, 30_000);
+
+    it("resumes a save that was already dead on the death screen", async () => {
+        const { app, env, db } = await makeApp();
+        const g = await guest(app, env);
+
+        const first = (await getState(app, env, g.cookie)).json();
+        const state = {
+            ...first.state,
+            dead: true,
+            hp: 0,
+            pend: 12,
+        };
+
+        await db.collection<SaveDoc>("saves").updateOne(
+            { _id: g.id },
+            {
+                $set: {
+                    state,
+                    lastSimAt: new Date(Date.now() - 3600 * 1000),
+                },
+            },
+        );
+
+        const body = (await getState(app, env, g.cookie)).json();
+        expect(body.away.died).toBe(true);
+        expect(body.state.dead).toBe(false);
+        expect(body.state.shards).toBeGreaterThanOrEqual(12);
+        expect(body.away.kills).toBeGreaterThan(0);
 
         await app.close();
     }, 30_000);

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import {
     createGame,
@@ -16,7 +16,10 @@ import { TopBar } from "../src/components/TopBar";
 import { HeroPanel } from "../src/components/hero/HeroPanel";
 import { Arena } from "../src/components/arena/Arena";
 import { SidePanel } from "../src/components/side/SidePanel";
-import { DeathModal } from "../src/components/modals/DeathModal";
+import {
+    AUTO_REBIRTH_SECONDS,
+    DeathModal,
+} from "../src/components/modals/DeathModal";
 
 function seed(mutate?: (state: SimState) => void): SimState {
     resetSnapshotCache();
@@ -137,6 +140,32 @@ describe("game shell", () => {
         expect(
             screen.getByRole("button", { name: /Rise from the ashes/ }),
         ).toBeTruthy();
+    });
+
+    it("resumes the idle loop automatically after death", () => {
+        vi.useFakeTimers();
+        try {
+            seed((s) => {
+                s.dead = true;
+                s.pend = 12;
+            });
+            render(
+                <MemoryRouter>
+                    <DeathModal />
+                </MemoryRouter>,
+            );
+
+            expect(screen.getByText(/Rising automatically in/)).toBeTruthy();
+            expect(useGameStore.getState().snap?.dead).toBe(true);
+
+            act(() => {
+                vi.advanceTimersByTime(AUTO_REBIRTH_SECONDS * 1000);
+            });
+
+            expect(useGameStore.getState().snap?.dead).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
 

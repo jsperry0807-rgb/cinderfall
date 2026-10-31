@@ -114,6 +114,54 @@ describe("sim invariants", () => {
         expect(events).toEqual([]);
         expect(JSON.stringify(state)).toBe(before);
     });
+
+    it("auto-rebirths and keeps simulating when asked", () => {
+        const rng = mulberry32(3);
+        const { state } = createGame(rng);
+        state.hp = 0.0001;
+        state.stage = 8;
+        state.enemy.t = state.enemy.spd;
+
+        const events = advance(state, 600, rng, {
+            step: 0.1,
+            autoRebirth: true,
+        });
+
+        expect(events.some((e) => e.t === "death")).toBe(true);
+        expect(events.some((e) => e.t === "rebirth")).toBe(true);
+        expect(state.dead).toBe(false);
+        expect(state.best).toBeGreaterThanOrEqual(8);
+        expect(state.stage).toBeGreaterThan(1);
+    });
+
+    it("auto-rebirths a save that was already dead", () => {
+        const rng = mulberry32(4);
+        const { state } = createGame(rng);
+        die(state);
+        state.pend = 7;
+
+        const events = advance(state, 60, rng, {
+            step: 1,
+            autoRebirth: true,
+        });
+
+        expect(events.some((e) => e.t === "rebirth")).toBe(true);
+        expect(state.dead).toBe(false);
+        expect(state.pend).toBe(0);
+        expect(state.shards).toBeGreaterThanOrEqual(7);
+    });
+
+    it("ignores strikes and skills while dead", () => {
+        const rng = mulberry32(5);
+        const { state } = createGame(rng);
+        state.ranks.whirl = 1;
+        die(state);
+
+        const enemy = JSON.stringify(state.enemy);
+        expect(hit(state, rng)).toEqual([]);
+        expect(cast(state, "whirl", rng)).toEqual([]);
+        expect(JSON.stringify(state.enemy)).toBe(enemy);
+    });
 });
 
 describe("combat maths", () => {
@@ -127,6 +175,24 @@ describe("combat maths", () => {
 
         expect(before - state.enemy.hp).toBeCloseTo(stats.dmg, 6);
         expect(state.enemy.vuln).toBe(1);
+    });
+
+    it("updates best as soon as a stage is cleared", () => {
+        const rng = mulberry32(6);
+        const { state } = createGame(rng);
+        state.stage = 12;
+        state.k = 5;
+        state.best = 1;
+        state.enemy.boss = true;
+        state.enemy.hp = 0.001;
+        state.enemy.max = 1;
+
+        const events = hit(state, rng);
+        const kill = events.find((e) => e.t === "kill");
+
+        expect(kill && kill.t === "kill" ? kill.boss : false).toBe(true);
+        expect(state.stage).toBe(13);
+        expect(state.best).toBeGreaterThanOrEqual(13);
     });
 
     it("applies crit tiers and vulnerability", () => {
@@ -154,6 +220,17 @@ describe("combat maths", () => {
 
         const second = cast(state, "whirl", rng);
         expect(second).toEqual([]);
+    });
+
+    it("refuses to rebirth a living character", () => {
+        const rng = mulberry32(12);
+        const { state } = createGame(rng);
+        state.lvl = 5;
+        state.stage = 5;
+        const before = JSON.stringify(state);
+
+        expect(rebirth(state, rng)).toEqual([]);
+        expect(JSON.stringify(state)).toBe(before);
     });
 
     it("awards pending shards on death and resets the run on rebirth", () => {
