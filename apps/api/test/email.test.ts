@@ -328,6 +328,31 @@ describe("email configuration", () => {
         await app.close();
     });
 
+    it("treats empty mail settings as absent", () => {
+        const env = loadEnv({
+            NODE_ENV: "production",
+            SESSION_SECRET: "x".repeat(48),
+            PUBLIC_ORIGIN: "https://cinderfall.example",
+            MONGODB_URI: "mongodb://127.0.0.1:27017/cinderfall",
+            MAILER: "console",
+            MAIL_FROM: "",
+            RESEND_API_KEY: "",
+        });
+        expect(env.emailEnabled).toBe(false);
+
+        expect(() =>
+            loadEnv({
+                NODE_ENV: "production",
+                SESSION_SECRET: "x".repeat(48),
+                PUBLIC_ORIGIN: "https://cinderfall.example",
+                MONGODB_URI: "mongodb://127.0.0.1:27017/cinderfall",
+                MAILER: "resend",
+                MAIL_FROM: "",
+                RESEND_API_KEY: "",
+            }),
+        ).toThrow("MAILER=resend requires RESEND_API_KEY and MAIL_FROM");
+    });
+
     it("hides email and the dev inbox in production with the console mailer", async () => {
         const db = await freshDb();
         const env = loadEnv({

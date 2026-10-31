@@ -8,6 +8,13 @@ import { z } from "zod";
 const DEV_ORIGIN = "http://localhost:5173";
 const DEV_SECRET = "dev-only-secret-change-me-0123456789abcdef";
 
+/** Compose passes unset optional values as ""; treat them as absent. */
+const optionalString = (min: number) =>
+    z.preprocess(
+        (value) => (value === "" ? undefined : value),
+        z.string().min(min).optional(),
+    );
+
 const RawEnv = z.object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     HOST: z.string().min(1).default("127.0.0.1"),
@@ -41,8 +48,8 @@ const RawEnv = z.object({
 
     /** How verification and reset emails are delivered. */
     MAILER: z.enum(["console", "resend"]).default("console"),
-    MAIL_FROM: z.string().min(3).optional(),
-    RESEND_API_KEY: z.string().min(10).optional(),
+    MAIL_FROM: optionalString(3),
+    RESEND_API_KEY: optionalString(10),
 });
 
 export type Env = Omit<z.infer<typeof RawEnv>, "SESSION_SECRET"> & {
